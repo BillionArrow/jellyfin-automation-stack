@@ -1,0 +1,16 @@
+zurg: v1
+token: <ENTER RD TOKEN HERE>
+
+cache_network_test_results: true
+check_for_changes_every_secs: 15
+api_timeout_secs: 30
+download_timeout_secs: 10
+retries_until_failed: 3
+retry_503_errors: true
+
+delete_error_torrents: true
+hide_broken_torrents: true
+retain_rd_torrent_name: true
+delete_torrent_if_extensions_found: [iso, zip, exe]
+
+directories: {}
