@@ -1,182 +1,77 @@
 services:
-  zurg:
-    image: ghcr.io/debridmediamanager/zurg-testing:latest
-    container_name: zurg
+  davex:
+    image: ghcr.io/qooode/nzbdavex:stable
+    container_name: davex
     restart: unless-stopped
+    healthcheck:
+      test: curl -f http://localhost:3000/health || exit 1
+      interval: 1m
+      retries: 3
+      start_period: 5s
+      timeout: 5s
     ports:
-      - "9999:9999"
-    volumes:
-      - ./zurg/config.yml:/app/config.yml
-      - ./zurg/data:/app/data
-
-  rclone:
-    image: rclone/rclone:latest
-    container_name: rclone
-    restart: unless-stopped
-    cap_add:
-      - SYS_ADMIN
-    security_opt:
-      - apparmor:unconfined
-    devices:
-      - /dev/fuse:/dev/fuse
-    volumes:
-      - /mnt/zurg:/data:shared
-      - ./rclone/cache:/cache
-    command: >
-      mount :webdav: /data
-      --webdav-url http://zurg:9999/dav
-      --cache-dir /cache
-      --vfs-cache-mode full
-      --vfs-cache-max-size 40G
-      --vfs-cache-max-age 12h
-      --vfs-cache-poll-interval 1m
-      --vfs-read-chunk-size 32M
-      --vfs-read-chunk-size-limit 512M
-      --vfs-read-ahead 256M
-      --dir-cache-time 10s
-      --allow-other
-      --allow-non-empty
-      --buffer-size 64M
-    depends_on:
-      - zurg
-
-  jellyfin:
-    image: lscr.io/linuxserver/jellyfin:latest
-    container_name: jellyfin
-    restart: unless-stopped
+      - "3000:3000"
     environment:
-      - PUID=1000
+      - PUID=1000 # (edit these if necessary)
       - PGID=1000
-      - TZ=Europe/Brussels
-      - JELLYFIN_PublishedServerUrl=192.168.0.211 # change this to whatever you want
-      - DOCKER_MODS=linuxserver/mods:jellyfin-opencl-intel # useful library for hardware encoding on my prodesk server, remove if you don't have an 8th+ gen intel cpu, or replace with other libraries that support your (i)gpu
-    ports:
-      - "8096:8096"
-    devices:
-      - /dev/dri:/dev/dri # Intel QuickSync Passthrough, change this to whatever gpu you have
     volumes:
-      - ./jellyfin/config:/config
-      - /mnt/zurg:/mnt/zurg:ro,rslave
-      - ./jellyfin-media:/data/media:ro
-    depends_on:
-      - rclone
-
-  prowlarr:
-    image: lscr.io/linuxserver/prowlarr:latest
-    container_name: prowlarr
-    restart: unless-stopped
-    environment:
-      - PUID=1000
-      - PGID=1000
-      - TZ=Europe/Brussels
-    ports:
-      - "9696:9696"
-    volumes:
-      - ./prowlarr/config:/config
+      - ./davex/config:/config
+      - ./downloads:/data/downloads # this is where the NZB files are temporarily stored after being downloaded as .strm files, which are promptly renamed and moved to the media folder.
+      - /mnt:/mnt
+      - ./media:/data/media # the directory of your actual media which will be used by Jellyfin
 
   sonarr:
     image: lscr.io/linuxserver/sonarr:latest
     container_name: sonarr
     restart: unless-stopped
     environment:
-      - PUID=1000
+      - PUID=1000 # (edit these if necessary)
       - PGID=1000
-      - TZ=Europe/Brussels
     ports:
       - "8989:8989"
     volumes:
       - ./sonarr/config:/config
-      - ./jellyfin-media:/data/media
-      - /mnt/zurg:/mnt/zurg:ro,rslave
-
+      - ./downloads:/data/downloads
+      - ./media:/data/media
   radarr:
     image: lscr.io/linuxserver/radarr:latest
     container_name: radarr
     restart: unless-stopped
     environment:
-      - PUID=1000
+      - PUID=1000 # (edit these if necessary)
       - PGID=1000
-      - TZ=Europe/Brussels
     ports:
       - "7878:7878"
     volumes:
       - ./radarr/config:/config
-      - ./jellyfin-media:/data/media
-      - /mnt/zurg:/mnt/zurg:ro,rslave
+      - ./downloads:/data/downloads
+      - ./media:/data/media
 
-  jellyseerr:
+Seerr:
     image: ghcr.io/seerr-team/seerr:latest
-    container_name: jellyseerr
+    container_name: Seerr
     init: true
     restart: unless-stopped
     environment:
-      - LOG_LEVEL=info
       - AUTH_COOKIE_SAMESITE=None
       - AUTH_COOKIE_SECURE=true
-      - TZ=Europe/Brussels
     ports:
       - "5055:5055"
     volumes:
-      - ./jellyseerr/config:/app/config
+      - ./Seerr/config:/app/config
 
-  rdtclient:
-    image: rogerfar/rdtclient:latest
-    container_name: rdtclient
+jellyfin:
+    image: lscr.io/linuxserver/jellyfin:latest
+    container_name: jellyfin
     restart: unless-stopped
     environment:
-      - TZ=Europe/Brussels
+      - PUID=1000
+      - PGID=1000
+      - DOCKER_MODS=linuxserver/mods:jellyfin-opencl-intel # optional: this enables intel quicksync passthrough
     ports:
-      - "6500:6500"
+      - "8096:8096"
+    devices:
+      - /dev/dri:/dev/dri # Intel QuickSync Passthrough
     volumes:
-      - ./rdtclient/config:/data/db
-      - ./rdtclient/.rdtclient-downloads:/data/downloads
-
-  flaresolverr:
-    image: ghcr.io/flaresolverr/flaresolverr:latest
-    container_name: flaresolverr
-    restart: unless-stopped
-    environment:
-      - TZ=Europe/Brussels
-    ports:
-      - "8191:8191"
-  
-  cloudflared: # OPTIONAL IF YOU WANT TO PUBLISH YOUR WEBSITE. temporarily remove if you don't plan on doing so or don't have a domain/CF token yet
-    image: cloudflare/cloudflared:latest
-    container_name: cloudflared
-    restart: unless-stopped
-    command: tunnel --no-autoupdate run --token <ENTER CLOUDFLARE TOKEN HERE>
-
-  zilean-postgres:
-    image: postgres:16-alpine
-    container_name: zilean-postgres
-    restart: unless-stopped
-    environment:
-      - POSTGRES_USER=zilean
-      - POSTGRES_PASSWORD=zilean
-      - POSTGRES_DB=zilean
-    volumes:
-      - ./zilean/postgres:/var/lib/postgresql/data
-    healthcheck:
-      test: ["CMD-SHELL", "pg_isready -d zilean -U zilean"]
-      interval: 10s
-      timeout: 5s
-      retries: 5
-
-  zilean:
-    image: ipromknight/zilean:latest
-    container_name: zilean
-    restart: unless-stopped
-    ports:
-      - "8181:8181"
-    environment:
-      - Zilean__Database__ConnectionString=Host=zilean-postgres;Port=5432;Database=zilean;Username=zilean;Password=zilean
-      - Zilean__Zurg__Enabled=true
-      - Zilean__Zurg__Url=http://zurg:9999
-      - Zilean__Dmm__Enabled=true
-    volumes:
-      - ./zilean/data:/app/data
-    depends_on:
-      zilean-postgres:
-        condition: service_healthy
-      zurg:
-        condition: service_started
+      - ./usenet/media:/usenet-media:ro
+      - ./jellyfin/config:/config
